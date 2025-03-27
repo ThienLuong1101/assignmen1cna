@@ -120,16 +120,18 @@ while True:
     # ProxyServer finds a cache hit
     # Send back response to client 
     # ~~~~ INSERT CODE ~~~~
+    #check the meta file for the time
     metaPath = cacheLocation + '.meta'
     if os.path.isfile(metaPath):
         with open(metaPath, 'r') as metaFile:
             try:
-                expiration_time = int(metaFile.read().strip())
-                current_time = int(time.time())
-                
+                expiration_time = int(metaFile.read().strip()) #expired time
+                current_time = int(time.time()) # curr time
+                #expire -> look to send request to the origin server
                 if current_time > expiration_time:
                     print('Cache entry expired. Need to fetch fresh content.')
                     raise Exception("Cache expired")
+                # the time is still ok continue this cache
                 else:
                     print(f'Cache valid until: {time.ctime(expiration_time)}')
             except:
@@ -140,7 +142,7 @@ while True:
     response = ""
     for line in cacheData:
         response += line
-    clientSocket.sendall(response.encode())
+    clientSocket.sendall(response.encode()) #response to client
     # ~~~~ END CODE INSERT ~~~~
     cacheFile.close()
     print ('Sent to the client:')
@@ -227,15 +229,16 @@ while True:
       headers = response_bytes.split(b'\r\n\r\n', 1)[0].decode('utf-8', 'ignore')
       cache_control = re.search(r'Cache-Control:.*?(max-age=([0-9]+))', headers, re.IGNORECASE)
       max_age_zero = cache_control and int(cache_control.group(2)) == 0
-      expires = re.search(r'Expires:.*', headers, re.IGNORECASE)
-      
-      # max-age = 0 or 404 not found no cache
-      if max_age_zero or is_404:
+      no_cache = re.search(r'Cache-Control:.*?(no-cache|no-store)', headers, re.IGNORECASE)
+
+      # max-age = 0 or 404 not found or no-store -> no cache
+      if max_age_zero or is_404 or no_cache:
           if max_age_zero:
             print('Cache-Control prohibits caching (max-age=0). Not caching.')
           elif is_404:
             print('Cache-Control prohibits caching (404 not found). Not caching.')
-            
+          elif no_cache:  
+            print('Cache-Control specifies no-store. Not caching.')
           cacheFile.close()
           if os.path.exists(cacheLocation):
               os.remove(cacheLocation)
@@ -266,20 +269,16 @@ while True:
           # Write the response to cache (even for 301 redirect)
           cacheFile.write(response_bytes)
           print('Cached 301 redirect response')
-
-      elif not is_redirect:
-          # Cache the non-redirect responses if no Cache-Control or expires header prohibits it
-          if expires or cache_control:
-              cacheFile.write(response_bytes)
-              print('Cached with Expires or Cache-Control header')
-
       # Handle 302 redirects with cache consideration
       elif ' 302 ' in status_line:
           print('Not caching 302 response without caching directives.')
           cacheFile.close()
           if os.path.exists(cacheLocation):
               os.remove(cacheLocation)
-
+      # normal cache for the other requests
+      else:
+        cacheFile.write(response_bytes)
+        print('cache response')
       # ~~~~ END CODE INSERT ~~~~
       cacheFile.close()
       print ('cache file closed')
